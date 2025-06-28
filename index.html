@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>百家樂下注模擬器（含圖表分析）</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 40px; }
+    button, select, input { margin: 5px; padding: 10px; font-size: 16px; }
+    .win { color: green; }
+    .lose { color: red; }
+    table { margin: auto; border-collapse: collapse; width: 90%; margin-top: 20px; }
+    th, td { border: 1px solid #aaa; padding: 8px; }
+    th { background-color: #f0f0f0; }
+    canvas { max-width: 90%; margin: 20px auto; }
+  </style>
+</head>
+<body>
+  <h1>百家樂下注模擬器</h1>
+
+  <div>
+    <label>選擇下注：</label>
+    <select id="betChoice">
+      <option value="B">莊</option>
+      <option value="P">閒</option>
+    </select><br>
+    <label>下注金額：</label>
+    <input type="number" id="betAmount" value="100" min="1"><br>
+    <button onclick="placeBet()">下注並開局</button>
+    <button onclick="clearRecords()">清除歷史紀錄</button>
+  </div>
+
+  <div class="result" id="result"></div>
+  <div class="balance" id="balance">目前資金：$1000</div>
+  <div class="log" id="log"></div>
+
+  <canvas id="balanceChart" height="200"></canvas>
+
+  <div id="records"></div>
+
+  <script>
+    let balance = 1000;
+    let gameHistory = JSON.parse(localStorage.getItem("baccarat_history")) || [];
+    let chart = null;
+
+    function simulateRound() {
+      const r = Math.random() * 100;
+      if (r < 45) return 'B';
+      else if (r < 90) return 'P';
+      else return 'T';
+    }
+
+    function placeBet() {
+      const betChoice = document.getElementById("betChoice").value;
+      const betAmount = parseInt(document.getElementById("betAmount").value);
+      if (betAmount <= 0 || betAmount > balance) {
+        alert("下注金額錯誤或不足！");
+        return;
+      }
+
+      const outcome = simulateRound();
+      let winAmount = 0;
+      let result = '';
+      let profit = 0;
+
+      if (outcome === 'T') {
+        result = "和局，退回下注金。";
+        profit = 0;
+      } else if (betChoice === outcome) {
+        winAmount = outcome === 'B' ? betAmount * 0.95 : betAmount;
+        balance += winAmount;
+        result = "你贏了！獲利：" + winAmount.toFixed(2);
+        profit = winAmount;
+        document.getElementById("log").innerHTML = `<span class="win">${result}</span>`;
+      } else {
+        balance -= betAmount;
+        result = "你輸了，損失：" + betAmount;
+        profit = -betAmount;
+        document.getElementById("log").innerHTML = `<span class="lose">${result}</span>`;
+      }
+
+      document.getElementById("balance").innerText = "目前資金：$" + balance.toFixed(2);
+
+      const roundRecord = {
+        bet: betChoice === 'B' ? '莊' : '閒',
+        result: outcome === 'B' ? '莊' : outcome === 'P' ? '閒' : '和',
+        amount: betAmount,
+        profit: profit,
+        balance: balance.toFixed(2),
+        time: new Date().toLocaleTimeString()
+      };
+
+      gameHistory.push(roundRecord);
+      localStorage.setItem("baccarat_history", JSON.stringify(gameHistory));
+      renderHistoryTable();
+      updateChart();
+    }
+
+    function renderHistoryTable() {
+      if (gameHistory.length === 0) {
+        document.getElementById("records").innerHTML = "<p>尚無紀錄。</p>";
+        return;
+      }
+
+      let html = "<h3>下注歷史記錄</h3><table><tr><th>時間</th><th>下注</th><th>開獎</th><th>盈虧</th><th>結餘</th></tr>";
+      gameHistory.slice().reverse().forEach(item => {
+        html += `<tr>
+          <td>${item.time}</td>
+          <td>${item.bet}</td>
+          <td>${item.result}</td>
+          <td style="color:${item.profit >= 0 ? 'green' : 'red'};">${item.profit}</td>
+          <td>${item.balance}</td>
+        </tr>`;
+      });
+      html += "</table>";
+      document.getElementById("records").innerHTML = html;
+    }
+
+    function updateChart() {
+      const labels = gameHistory.map((_, i) => "第" + (i + 1) + "局");
+      const data = gameHistory.map(item => parseFloat(item.balance));
+
+      if (chart) {
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
+        chart.update();
+      } else {
+        const ctx = document.getElementById("balanceChart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '資金走勢',
+              data: data,
+              borderColor: 'blue',
+              fill: false,
+              tension: 0.2,
+              pointRadius: 3
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      }
+    }
+
+    function clearRecords() {
+      if (confirm("確定要清除所有紀錄？")) {
+        localStorage.removeItem("baccarat_history");
+        gameHistory = [];
+        balance = 1000;
+        document.getElementById("balance").innerText = "目前資金：$1000";
+        document.getElementById("log").innerText = "";
+        renderHistoryTable();
+        if (chart) {
+          chart.destroy();
+          chart = null;
+        }
+      }
+    }
+
+    // 初始化
+    renderHistoryTable();
+    if (gameHistory.length > 0) updateChart();
+  </script>
+</body>
+</html>
